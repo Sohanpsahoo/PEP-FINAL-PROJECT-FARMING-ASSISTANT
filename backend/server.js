@@ -63,12 +63,17 @@ async function start() {
   // Try to connect MongoDB (non-blocking — server starts even if DB is down)
   await connectDB();
 
-  app.listen(PORT, () => {
-    console.log(`\n🚀 Krishi Sakhi Backend running on http://localhost:${PORT}`);
-    console.log(`📡 Environment: ${process.env.NODE_ENV || 'development'}\n`);
-  });
+  // Only call app.listen() in local development
+  // Vercel manages the server lifecycle in production
+  if (!process.env.VERCEL) {
+    app.listen(PORT, () => {
+      console.log(`\n🚀 Krishi Sakhi Backend running on http://localhost:${PORT}`);
+      console.log(`📡 Environment: ${process.env.NODE_ENV || 'development'}\n`);
+    });
+  }
 }
 
 start();
 
-// Trigger nodemon restart 2
+// Export the app for Vercel serverless
+module.exports = app;
