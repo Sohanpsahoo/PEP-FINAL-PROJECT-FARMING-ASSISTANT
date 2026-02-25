@@ -19,6 +19,7 @@ frontend/credentials/
 !package*.json
 !tsconfig.json
 !jsconfig.json
+!vercel.json
 !vite.config.js
 !eslint.config.js
 serviceAccountKey.json
