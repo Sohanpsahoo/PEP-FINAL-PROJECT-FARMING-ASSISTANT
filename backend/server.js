@@ -1,4 +1,5 @@
-require('dotenv').config({ override: true });
+require('dotenv').config();
+
 const express = require('express');
 const cors = require('cors');
 const { connectDB } = require('./config/db');
@@ -22,18 +23,15 @@ const app = express();
 
 // ─── Middleware ──────────────────────────────────────────────────────
 app.use(cors({
-  origin: [
-    'http://localhost:5173',   // Vite dev server
-    'http://localhost:5174',   // Vite dev server (alternate)
-    'http://localhost:3000',   // Alternate dev port
-    'http://localhost:4173',   // Vite preview
-    'https://pep-final-project-farming-assistant-three.vercel.app', // Deployed frontend
-    'https://pep-final-project-farming-assistant.vercel.app',       // Vercel backend URL (same-origin fallback)
-  ],
-  credentials: true,
+  origin: "*",
+  credentials: true
 }));
+
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+
+// ─── Connect Database ───────────────────────────────────────────────
+connectDB();
 
 // ─── API Routes ─────────────────────────────────────────────────────
 app.use('/api/weather', weatherRoutes);
@@ -53,20 +51,12 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
-// ─── Error Handler (must be LAST middleware) ────────────────────────
+// ─── Error Handler (MUST be last) ───────────────────────────────────
 app.use(errorHandler);
 
-// ─── Connect DB immediately (Mongoose buffers ops until connected) ────
-connectDB();
+// ─── Start Server ───────────────────────────────────────────────────
+const PORT = process.env.PORT || 8007;
 
-// ─── Start Server (local dev only) ──────────────────────────────────
-if (!process.env.VERCEL) {
-  const PORT = process.env.PORT || 8007;
-  app.listen(PORT, () => {
-    console.log(`\n🚀 Krishi Sakhi Backend running on http://localhost:${PORT}`);
-    console.log(`📡 Environment: ${process.env.NODE_ENV || 'development'}\n`);
-  });
-}
-
-// Export for Vercel serverless
-module.exports = app;
+app.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
+});
