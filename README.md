@@ -1,21 +1,21 @@
 # 🌾 Krishi Sakhi - Digital Farming Companion
 
-**Your Intelligent Agricultural Assistant for Kerala Farmers**
+**Your Intelligent Agricultural Assistant for Indian Farmers**
 
-Krishi Sakhi is a comprehensive digital farming platform designed specifically for Kerala farmers, providing AI-powered agricultural guidance, real-time market data, and personalized farming advice in both English and Malayalam.
+Krishi Sakhi is a comprehensive digital farming platform designed specifically for Indian farmers, providing AI-powered agricultural guidance, real-time market data, and personalized farming advice.
 
 ## 🎯 Features
 
 ### 🤖 AI-Powered Intelligence
 - **Gemini 2.0 Pro Integration** - Advanced AI for personalized farming advice
-- **Malayalam Voice Support** - Text-to-speech and voice interaction
+- **Voice Support** - Text-to-speech and voice interaction
 - **Contextual Recommendations** - Weather-based farming guidance
 - **Smart Fallback System** - Works even when AI APIs are unavailable
 
 ### 📊 Real-Time Market Data
-- **Live Crop Prices** - Kerala market rates with daily updates
+- **Live Crop Prices** - Market rates with daily updates
 - **Buy/Sell Functionality** - Complete marketplace for farmers
-- **District-wise Markets** - Authentic Kerala market locations
+- **District-wise Markets** - Authentic market locations
 - **Price Trends** - Historical data and market analysis
 
 ### 🌱 Comprehensive Farm Management
@@ -75,13 +75,13 @@ npm run dev
 - Activity and reminder summaries
 
 #### 💬 AI Chat Assistant
-- Ask farming questions in English or Malayalam
-- Get contextual advice for Kerala farming
+- Ask farming questions via Texr/Speech
+- Get contextual advice for Indian farming
 - Voice interaction with text-to-speech
 - Seasonal and weather-based guidance
 
 #### 🛒 Market Place
-- View live crop prices across Kerala markets
+- View live crop prices across Indian markets
 - **Buy crops** with quantity selection and price calculation
 - **Sell your produce** with listing functionality
 - Compare prices across different markets
@@ -90,7 +90,7 @@ npm run dev
 - Upload plant photos for AI analysis
 - Plant.id professional disease identification
 - Gemini AI enhanced treatment advice
-- Kerala-specific treatment recommendations
+- Local-specific treatment recommendations
 
 #### 📅 Activity & Reminder Management
 - Log farming activities with AI follow-up suggestions
@@ -98,7 +98,7 @@ npm run dev
 - Track farming operations and productivity
 
 #### 👨‍🌾 Expert Consultation
-- Browse agricultural officers by district
+- Browse agricultural officers by states and district
 - Book phone or video consultations
 - Get professional farming guidance
 
@@ -154,10 +154,10 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## 🙏 Acknowledgments
 
-- **Kerala Agricultural Department** - For farming practices and guidelines
+- **Agricultural Department** - For farming practices and guidelines
 - **Google Gemini AI** - For advanced AI capabilities
 - **Plant.id** - For professional plant disease detection
-- **Kerala Farmers** - For inspiration and feedback
+- **Indian Farmers** - For inspiration and feedback
 
 ## 📞 Support
 
@@ -168,6 +168,6 @@ For support and questions:
 
 ---
 
-**Made with ❤️ for Kerala Farmers**
+**Made with ❤️ for Indian Farmers**
 
 *Krishi Sakhi - Walking with farmers throughout their agricultural journey* 🌾
