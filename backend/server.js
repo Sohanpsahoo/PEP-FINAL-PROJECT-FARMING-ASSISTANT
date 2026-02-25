@@ -61,7 +61,7 @@ connectDB();
 
 // ─── Start Server (local dev only) ──────────────────────────────────
 if (!process.env.VERCEL) {
-  const PORT = process.env.PORT || 8001;
+  const PORT = process.env.PORT || 8007;
   app.listen(PORT, () => {
     console.log(`\n🚀 Krishi Sakhi Backend running on http://localhost:${PORT}`);
     console.log(`📡 Environment: ${process.env.NODE_ENV || 'development'}\n`);
