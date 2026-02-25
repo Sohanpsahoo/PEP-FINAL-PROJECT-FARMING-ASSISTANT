@@ -56,24 +56,17 @@ app.get('/api/health', (req, res) => {
 // ─── Error Handler (must be LAST middleware) ────────────────────────
 app.use(errorHandler);
 
-// ─── Start Server ───────────────────────────────────────────────────
-const PORT = process.env.PORT || 8001;
+// ─── Connect DB immediately (Mongoose buffers ops until connected) ────
+connectDB();
 
-async function start() {
-  // Try to connect MongoDB (non-blocking — server starts even if DB is down)
-  await connectDB();
-
-  // Only call app.listen() in local development
-  // Vercel manages the server lifecycle in production
-  if (!process.env.VERCEL) {
-    app.listen(PORT, () => {
-      console.log(`\n🚀 Krishi Sakhi Backend running on http://localhost:${PORT}`);
-      console.log(`📡 Environment: ${process.env.NODE_ENV || 'development'}\n`);
-    });
-  }
+// ─── Start Server (local dev only) ──────────────────────────────────
+if (!process.env.VERCEL) {
+  const PORT = process.env.PORT || 8001;
+  app.listen(PORT, () => {
+    console.log(`\n🚀 Krishi Sakhi Backend running on http://localhost:${PORT}`);
+    console.log(`📡 Environment: ${process.env.NODE_ENV || 'development'}\n`);
+  });
 }
 
-start();
-
-// Export the app for Vercel serverless
+// Export for Vercel serverless
 module.exports = app;

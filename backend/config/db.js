@@ -4,9 +4,7 @@ let isConnected = false;
 
 const connectDB = async () => {
   try {
-    const conn = await mongoose.connect(process.env.MONGODB_URI, {
-      bufferCommands: false, // Prevents operations from hanging if not connected
-    });
+    const conn = await mongoose.connect(process.env.MONGODB_URI);
     isConnected = true;
     console.log(`✅ MongoDB Connected: ${conn.connection.host}`);
   } catch (error) {
