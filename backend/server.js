@@ -27,6 +27,8 @@ app.use(cors({
     'http://localhost:5174',   // Vite dev server (alternate)
     'http://localhost:3000',   // Alternate dev port
     'http://localhost:4173',   // Vite preview
+    'https://pep-final-project-farming-assistant-three.vercel.app', // Deployed frontend
+    'https://pep-final-project-farming-assistant.vercel.app',       // Vercel backend URL (same-origin fallback)
   ],
   credentials: true,
 }));
