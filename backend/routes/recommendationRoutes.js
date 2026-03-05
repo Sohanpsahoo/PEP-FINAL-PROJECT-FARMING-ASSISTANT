@@ -1,17 +1,14 @@
-const express = require('express');
+const express = require("express");
 const router = express.Router();
 const {
-  generateRecommendations,
-  listRecommendations,
-  updateRecommendation,
-  deleteRecommendation,
-  clearRecommendations
-} = require('../controllers/recommendationController');
+  getCropRecommendation,
+  getRecommendationHistory,
+} = require("../controllers/recommendationController");
 
-router.post('/generate', generateRecommendations);
-router.get('/', listRecommendations);
-router.patch('/:id', updateRecommendation);
-router.delete('/clear', clearRecommendations);
-router.delete('/:id', deleteRecommendation);
+// POST /api/recommendations/crop
+router.post("/crop", getCropRecommendation);
+
+// GET /api/recommendations/history/:farmerId
+router.get("/history/:farmerId", getRecommendationHistory);
 
 module.exports = router;

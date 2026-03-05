@@ -1,23 +1,37 @@
-const mongoose = require('mongoose');
+const mongoose = require("mongoose");
 
-const recommendationSchema = new mongoose.Schema({
-  farmer:      { type: mongoose.Schema.Types.ObjectId, ref: 'Farmer', required: true, index: true },
-  category:    { type: String, enum: ['crop', 'soil', 'irrigation', 'pest', 'fertilizer', 'market', 'general', 'best_practice'], default: 'general' },
-  title:       { type: String, required: true },
-  description: { type: String, required: true },
-  impact:      { type: String, enum: ['high', 'medium', 'low'], default: 'medium' },
-  priority:    { type: Number, default: 5, min: 1, max: 10 },
-  source_data: {
-    farms:      [{ type: Object }],
-    activities: [{ type: Object }],
-    weather:    { type: Object }
+const RecommendationSchema = new mongoose.Schema(
+  {
+    farmer: { type: mongoose.Schema.Types.ObjectId, ref: "Farmer" },
+    farm: { type: mongoose.Schema.Types.ObjectId, ref: "Farm", default: null },
+
+    soilData: {
+      N: { type: Number, required: true },
+      P: { type: Number, required: true },
+      K: { type: Number, required: true },
+      ph: { type: Number, required: true },
+    },
+
+    weather: {
+      temperature: Number,
+      humidity: Number,
+      rainfall: Number,
+      location: String,
+    },
+
+    recommendedCrop: { type: String, required: true },
+    confidence: { type: Number },
+    alternativeCrops: [{ type: String }],
+
+    // Gemini-generated fields
+    explanation: { type: String },
+    soilInsights: { type: String },
+    growingTips: [{ type: String }],
+    warnings: [{ type: String }],
+    bestSowingTime: { type: String },
+    estimatedYield: { type: String },
   },
-  tags:        [{ type: String }],
-  is_read:     { type: Boolean, default: false },
-  is_saved:    { type: Boolean, default: false }
-}, { timestamps: true });
+  { timestamps: true }
+);
 
-recommendationSchema.virtual('id').get(function () { return this._id.toHexString(); });
-recommendationSchema.set('toJSON', { virtuals: true });
-
-module.exports = mongoose.model('Recommendation', recommendationSchema);
+module.exports = mongoose.model("Recommendation", RecommendationSchema);

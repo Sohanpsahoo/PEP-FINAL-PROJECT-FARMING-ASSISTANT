@@ -117,3 +117,12 @@ exports.getHourlyForecast = async (req, res, next) => {
     next(err);
   }
 };
+
+// ─── INTERNAL PROGRAMMATIC ACCESS ────────────────────────────────────
+exports.getWeatherForLocation = async (district, state) => {
+  const { lat, lon } = await getCoordinates(district, state);
+  const { data } = await axios.get(`${OWM_BASE}/weather`, {
+    params: { lat, lon, appid: API_KEY, units: 'metric' },
+  });
+  return data;
+};

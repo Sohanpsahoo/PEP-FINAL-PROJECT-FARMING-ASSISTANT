@@ -1,75 +1,225 @@
-import React, { useState, useEffect, useRef } from 'react';
-import Sidebar from '../components/Sidebar.jsx';
-import { apiFetch } from '../utils/api';
-import { useLanguage } from '../context/LanguageContext';
-import { translate, getLanguageCode } from '../utils/translate';
-import TranslatedText from '../components/TranslatedText';
+import React, { useState, useEffect, useRef } from "react";
+import Sidebar from "../components/Sidebar.jsx";
+import { apiFetch } from "../utils/api";
+import { useLanguage } from "../context/LanguageContext";
+import { translate, getLanguageCode } from "../utils/translate";
 
+// ---------------------------------------------------------------------------
+// Info Cards rendered inside chat messages
+// ---------------------------------------------------------------------------
+function InfoCard({ card }) {
+  if (!card) return null;
+
+  const base = "rounded-xl border p-3 text-xs";
+
+  if (card.type === "fertilizer") {
+    return (
+      <div className={`${base} bg-purple-50 border-purple-200`}>
+        <p className="font-bold text-purple-700 mb-2 flex items-center gap-1">
+          {card.icon} {card.title}
+        </p>
+        <div className="grid grid-cols-2 gap-1">
+          {Object.entries(card.data || {}).map(([k, v]) => (
+            <div key={k} className="bg-white rounded-lg p-2 border border-purple-100">
+              <p className="text-purple-400 capitalize font-medium">{k}</p>
+              <p className="text-gray-700 font-semibold mt-0.5">{v}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  if (card.type === "schedule") {
+    return (
+      <div className={`${base} bg-amber-50 border-amber-200`}>
+        <p className="font-bold text-amber-700 mb-2 flex items-center gap-1">
+          {card.icon} {card.title}
+        </p>
+        <div className="space-y-1">
+          {Object.entries(card.data || {}).map(([k, v]) => (
+            <div key={k} className="flex justify-between items-center bg-white rounded-lg px-2 py-1.5 border border-amber-100">
+              <span className="text-amber-600 capitalize font-medium">{k}</span>
+              <span className="text-gray-700 font-semibold">{v}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  if (card.type === "warning") {
+    return (
+      <div className={`${base} bg-red-50 border-red-200`}>
+        <p className="font-bold text-red-600 mb-2 flex items-center gap-1">
+          {card.icon} {card.title}
+        </p>
+        <ul className="space-y-1">
+          {(card.items || []).map((item, i) => (
+            <li key={i} className="flex items-start gap-2 text-red-700">
+              <span className="mt-0.5 shrink-0">⚠</span> {item}
+            </li>
+          ))}
+        </ul>
+      </div>
+    );
+  }
+
+  if (card.type === "tip") {
+    return (
+      <div className={`${base} bg-green-50 border-green-200`}>
+        <p className="font-bold text-green-700 mb-2 flex items-center gap-1">
+          {card.icon} {card.title}
+        </p>
+        <ul className="space-y-1">
+          {(card.items || []).map((item, i) => (
+            <li key={i} className="flex items-start gap-2 text-green-700">
+              <span className="text-green-500 mt-0.5 shrink-0">✓</span> {item}
+            </li>
+          ))}
+        </ul>
+      </div>
+    );
+  }
+
+  if (card.type === "market") {
+    return (
+      <div className={`${base} bg-blue-50 border-blue-200`}>
+        <p className="font-bold text-blue-700 mb-2 flex items-center gap-1">
+          {card.icon} {card.title}
+        </p>
+        <div className="space-y-1">
+          {Object.entries(card.data || {}).map(([k, v]) => (
+            <div key={k} className="flex justify-between items-center bg-white rounded-lg px-2 py-1.5 border border-blue-100">
+              <span className="text-blue-500 capitalize font-medium">{k.replace(/([A-Z])/g, " $1")}</span>
+              <span className="text-gray-700 font-semibold">{v}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  // Generic card fallback
+  return (
+    <div className={`${base} bg-gray-50 border-gray-200`}>
+      <p className="font-bold text-gray-700 mb-1 flex items-center gap-1">
+        {card.icon} {card.title}
+      </p>
+      {card.items && (
+        <ul className="space-y-0.5">
+          {card.items.map((item, i) => (
+            <li key={i} className="text-gray-600 flex gap-1">
+              <span>•</span> {item}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Crop recommendation banner shown at top of chat
+// ---------------------------------------------------------------------------
+function CropBanner({ crop }) {
+  if (!crop) return null;
+  const EMOJI = { rice:"🌾", wheat:"🌿", maize:"🌽", cotton:"🌸", sugarcane:"🎋", banana:"🍌", mango:"🥭", grapes:"🍇", default:"🌱" };
+  const emoji = EMOJI[crop.toLowerCase()] ?? EMOJI.default;
+  return (
+    <div className="mx-4 mt-2 mb-1 bg-gradient-to-r from-emerald-600 to-teal-500 rounded-xl px-4 py-2 flex items-center justify-between shrink-0">
+      <div className="flex items-center gap-2">
+        <span className="text-xl">{emoji}</span>
+        <div>
+          <p className="text-white text-xs opacity-80">Latest ML Recommendation</p>
+          <p className="text-white font-bold capitalize text-sm">{crop}</p>
+        </div>
+      </div>
+      <span className="text-white text-xs opacity-70 bg-white/20 rounded-full px-2 py-0.5">
+        Active Context
+      </span>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Main Chat Component
+// ---------------------------------------------------------------------------
 export default function Chat() {
   const [messages, setMessages] = useState([]);
-  const [inputMessage, setInputMessage] = useState('');
+  const [inputMessage, setInputMessage] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [isListening, setIsListening] = useState(false);
-  const { language, changeLanguage } = useLanguage();
-  const [farmerContext, setFarmerContext] = useState(null);
+  const { language } = useLanguage();
   const [suggestions, setSuggestions] = useState([]);
-  const [contextBadges, setContextBadges] = useState(null);
-  const [showContextPanel, setShowContextPanel] = useState(false);
+  const [recommendedCrop, setRecommendedCrop] = useState(null);
   const messagesEndRef = useRef(null);
   const recognitionRef = useRef(null);
   const textareaRef = useRef(null);
 
   const session = (() => {
-    try { return JSON.parse(localStorage.getItem('ammachi_session') || '{}'); } catch { return {}; }
+    try { return JSON.parse(localStorage.getItem("ammachi_session") || "{}"); }
+    catch { return {}; }
   })();
 
+  // ── Init ──
   useEffect(() => {
-    setMessages([{
-      id: 1,
-      text: `Namaste${session.name ? `, ${session.name}` : ''}! 🙏\n\nI'm **Krishi Sakhi** — your intelligent farming companion powered by AI.\n\nI have access to your **farm data**, **activities**, **government schemes**, **market prices**, and **local agricultural officers** to give you the most personalized advice.\n\n🌾 Ask me anything about farming, crops, weather, pests, government schemes, or market prices!`,
-      sender: 'bot',
-      timestamp: new Date(),
-      type: 'welcome'
-    }]);
-    fetchFarmerContext();
+    setMessages([
+      {
+        id: 1,
+        text: `Namaste${session.name ? `, ${session.name}` : ""}! 🙏\n\nI'm **Krishi Sakhi** — your intelligent farming companion powered by AI.\n\nI have access to your **farm data**, **crop recommendations**, **soil analysis**, **government schemes**, **market prices**, and **local agricultural officers**.\n\n🌾 Ask me about fertilizers, crop care, weather, pests, or market prices!`,
+        sender: "bot",
+        timestamp: new Date(),
+        type: "welcome",
+        cards: null,
+      },
+    ]);
     fetchSuggestions();
+    fetchLatestRecommendation();
     initializeSpeechRecognition();
   }, []);
 
   useEffect(() => { scrollToBottom(); }, [messages]);
 
-  const fetchFarmerContext = async () => {
+  const fetchLatestRecommendation = async () => {
     if (!session.userId) return;
     try {
-      const res = await apiFetch(`/api/farmers/${session.userId}/dashboard/`);
+      const res = await apiFetch(`/api/recommendations/history/${session.userId}`);
       const data = await res.json();
-      setFarmerContext(data);
-    } catch (e) { console.error('Context fetch error:', e); }
+      if (data.success && data.recommendations?.length > 0) {
+        setRecommendedCrop(data.recommendations[0].recommendedCrop);
+      }
+    } catch (e) {
+      console.error("Recommendation fetch error:", e);
+    }
   };
 
   const fetchSuggestions = async () => {
     try {
-      const res = await apiFetch(`/api/chatbot/suggestions?farmer_id=${session.userId || ''}`);
+      const res = await apiFetch(`/api/chatbot/suggestions?farmer_id=${session.userId || ""}`);
       const data = await res.json();
       if (data.success) setSuggestions(data.data || []);
-    } catch (e) {
+    } catch {
       setSuggestions([
-        'What government schemes can I apply for?',
-        'How to improve soil health?',
-        'Best crops for this season?',
-        'How to protect crops from pests?'
+        "What fertilizer should I use for my recommended crop?",
+        "Show me a crop calendar",
+        "How to improve my soil health?",
+        "What government schemes can I apply for?",
       ]);
     }
   };
 
   const initializeSpeechRecognition = () => {
-    if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
+    if ("webkitSpeechRecognition" in window || "SpeechRecognition" in window) {
       const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
       recognitionRef.current = new SR();
       recognitionRef.current.continuous = false;
       recognitionRef.current.interimResults = false;
       recognitionRef.current.lang = getLanguageCode();
-      recognitionRef.current.onresult = (e) => { setInputMessage(e.results[0][0].transcript); setIsListening(false); };
+      recognitionRef.current.onresult = (e) => {
+        setInputMessage(e.results[0][0].transcript);
+        setIsListening(false);
+      };
       recognitionRef.current.onerror = () => setIsListening(false);
       recognitionRef.current.onend = () => setIsListening(false);
     }
@@ -77,320 +227,320 @@ export default function Chat() {
 
   const startListening = () => { if (recognitionRef.current) { setIsListening(true); recognitionRef.current.start(); } };
   const stopListening = () => { if (recognitionRef.current) { recognitionRef.current.stop(); setIsListening(false); } };
+  const scrollToBottom = () => { messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }); };
 
-  const speakMessage = (text) => {
-    if ('speechSynthesis' in window) {
-      window.speechSynthesis.cancel();
-      const clean = text.replace(/\*\*/g, '').replace(/[#*_~`]/g, '').replace(/\[.*?\]\(.*?\)/g, '');
-      const utterance = new SpeechSynthesisUtterance(clean);
-      utterance.lang = getLanguageCode();
-      utterance.rate = 0.9;
-      speechSynthesis.speak(utterance);
-    }
-  };
-
-  const scrollToBottom = () => { messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }); };
-
+  // ── Send message ──
   const sendMessage = async (overrideMsg) => {
     const text = overrideMsg || inputMessage.trim();
     if (!text) return;
 
-    const userMsg = { id: Date.now(), text, sender: 'user', timestamp: new Date() };
-    setMessages(prev => [...prev, userMsg]);
-    setInputMessage('');
+    const userMsg = { id: Date.now(), text, sender: "user", timestamp: new Date(), cards: null };
+    setMessages((prev) => [...prev, userMsg]);
+    setInputMessage("");
     setIsLoading(true);
 
-    // Build conversation history for context
-    const history = messages.slice(-8).map(m => ({ role: m.sender === 'user' ? 'user' : 'assistant', text: m.text }));
+    if (textareaRef.current) {
+      textareaRef.current.style.height = "auto";
+    }
+
+    const history = messages
+      .slice(-10)
+      .filter((m) => m.sender === "user" || m.sender === "bot")
+      .filter((m) => m.type !== "welcome") // ← skip welcome message
+      .map((m) => ({
+        role: m.sender === "user" ? "user" : "assistant",
+        text: m.text || "",
+      }));
 
     try {
-      const res = await apiFetch('/api/chatbot/gemini', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      const res = await apiFetch("/api/chatbot/gemini", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           message: text,
-          language: language || 'English',
+          language: language || "English",
           farmer_id: session.userId,
-          conversation_history: history
-        })
+          conversation_history: history,
+        }),
       });
 
-      if (res.ok) {
-        const data = await res.json();
-        const botMsg = {
-          id: Date.now() + 1,
-          text: data.reply,
-          sender: 'bot',
-          timestamp: new Date(),
-          type: data.is_fallback ? 'fallback' : 'advice'
-        };
-        setMessages(prev => [...prev, botMsg]);
-        if (data.context_used) setContextBadges(data.context_used);
-      } else {
-        // Very rare 500 error case
-        const fallback = generateSmartResponse(text, language);
-        setMessages(prev => [...prev, { id: Date.now() + 1, text: fallback, sender: 'bot', timestamp: new Date(), type: 'fallback' }]);
+      const raw = await res.text();
+      if (!raw) throw new Error("Empty response from server");
+      const data = JSON.parse(raw);
+
+      // Update recommended crop if returned in context
+      if (data.context_used?.recommendedCrop) {
+        setRecommendedCrop(data.context_used.recommendedCrop);
+      }
+
+      const botMsg = {
+        id: Date.now() + 1,
+        text: data.reply,
+        sender: "bot",
+        timestamp: new Date(),
+        type: data.is_fallback ? "fallback" : "advice",
+        cards: data.cards || null,
+      };
+      setMessages((prev) => [...prev, botMsg]);
+
+      // Update suggestions based on crop context
+      if (data.context_used?.hasCropRecommendation) {
+        fetchSuggestions();
       }
     } catch (err) {
-      console.error('Chat error:', err);
-      const fallback = generateSmartResponse(text, language);
-      setMessages(prev => [...prev, { id: Date.now() + 1, text: fallback, sender: 'bot', timestamp: new Date(), type: 'fallback' }]);
+      console.error("Chat error:", err);
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: Date.now() + 1,
+          text: generateSmartResponse(text),
+          sender: "bot",
+          timestamp: new Date(),
+          type: "fallback",
+          cards: null,
+        },
+      ]);
     } finally {
       setIsLoading(false);
     }
   };
 
   const handleKeyPress = (e) => {
-    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
+    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage(); }
   };
 
-  // Auto-resize textarea
   const handleInput = (e) => {
     setInputMessage(e.target.value);
     if (textareaRef.current) {
-      textareaRef.current.style.height = 'auto';
-      textareaRef.current.style.height = Math.min(textareaRef.current.scrollHeight, 120) + 'px';
+      textareaRef.current.style.height = "auto";
+      textareaRef.current.style.height = Math.min(textareaRef.current.scrollHeight, 120) + "px";
     }
   };
 
-  // ─── Render a single message with markdown-like formatting ─────
+  // ── Render markdown-like message text ──
   const renderMessageContent = (text) => {
     if (!text) return null;
-    // Simple markdown: bold, bullets, numbered lists
-    const lines = text.split('\n');
+    const lines = text.split("\n");
     return lines.map((line, i) => {
-      // Bold
-      let rendered = line.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
-      // Bullet points
+      let rendered = line.replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>");
       if (/^[\-\•\▸]\s/.test(rendered.trim())) {
-        rendered = rendered.replace(/^[\s]*[\-\•\▸]\s*/, '');
-        return <div key={i} className="flex gap-2 items-start my-0.5"><span className="text-emerald-500 font-bold mt-0.5 flex-shrink-0">▸</span><span dangerouslySetInnerHTML={{ __html: rendered }} /></div>;
+        rendered = rendered.replace(/^[\s]*[\-\•\▸]\s*/, "");
+        return (
+          <div key={i} className="flex gap-2 items-start my-0.5">
+            <span className="text-emerald-500 font-bold mt-0.5 shrink-0">▸</span>
+            <span dangerouslySetInnerHTML={{ __html: rendered }} />
+          </div>
+        );
       }
-      // Numbered lists
       if (/^\d+[\.\)]\s/.test(rendered.trim())) {
         const num = rendered.match(/^[\s]*(\d+)[\.\)]/)[1];
-        rendered = rendered.replace(/^[\s]*\d+[\.\)]\s*/, '');
-        return <div key={i} className="flex gap-2 items-start my-0.5"><span className="w-6 h-6 bg-emerald-100 text-emerald-700 rounded-full flex items-center justify-center text-xs font-extrabold flex-shrink-0">{num}</span><span dangerouslySetInnerHTML={{ __html: rendered }} /></div>;
+        rendered = rendered.replace(/^[\s]*\d+[\.\)]\s*/, "");
+        return (
+          <div key={i} className="flex gap-2 items-start my-0.5">
+            <span className="w-5 h-5 bg-emerald-100 text-emerald-700 rounded-full flex items-center justify-center text-xs font-bold shrink-0">
+              {num}
+            </span>
+            <span dangerouslySetInnerHTML={{ __html: rendered }} />
+          </div>
+        );
       }
-      // Headers (lines starting with #)
       if (/^#{1,3}\s/.test(line)) {
-        const headerText = line.replace(/^#{1,3}\s/, '');
-        return <div key={i} className="text-emerald-700 font-extrabold mt-2 mb-1" dangerouslySetInnerHTML={{ __html: headerText.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>') }} />;
+        const headerText = line.replace(/^#{1,3}\s/, "");
+        return (
+          <div key={i} className="text-emerald-700 font-extrabold mt-2 mb-1"
+            dangerouslySetInnerHTML={{ __html: headerText.replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>") }}
+          />
+        );
       }
-      // URLs
-      rendered = rendered.replace(/(https?:\/\/[^\s<]+)/g, '<a href="$1" target="_blank" rel="noopener noreferrer" class="text-blue-600 underline hover:text-blue-800 font-medium">$1</a>');
-      // Empty line as spacing
+      rendered = rendered.replace(
+        /(https?:\/\/[^\s<]+)/g,
+        '<a href="$1" target="_blank" rel="noopener noreferrer" class="text-blue-600 underline">$1</a>'
+      );
       if (!line.trim()) return <div key={i} className="h-2" />;
       return <div key={i} className="my-0.5" dangerouslySetInnerHTML={{ __html: rendered }} />;
     });
   };
 
-  const generateSmartResponse = (message, lang) => {
+  const generateSmartResponse = (message) => {
     const lo = message.toLowerCase();
-    if (lo.includes('weather') || lo.includes('rain')) return 'For detailed weather forecasts, please visit the **Weather** section from the sidebar. I recommend checking the 5-day forecast before planning any spraying or harvesting activities.';
-    if (lo.includes('scheme') || lo.includes('pm-kisan') || lo.includes('government')) return 'You can explore all **National & State Government Schemes** in the **Schemes** section. Popular schemes include PM-KISAN (₹6,000/year), PMFBY crop insurance, and Kisan Credit Card. Visit the Schemes page for official links!';
-    if (lo.includes('price') || lo.includes('market') || lo.includes('mandi')) return 'Check the **Market** section for live crop prices in your district. You can view price trends, compare across mandis, and even place buy/sell orders.';
-    if (lo.includes('disease') || lo.includes('pest') || lo.includes('insect')) return 'Upload a clear photo of the affected plant on the **Detect** page for AI-powered disease detection. For immediate help, use neem-based organic sprays and ensure proper drainage.';
-    if (lo.includes('officer') || lo.includes('consult')) return 'Visit the **Officers** section to find agricultural officers in your district. You can book consultations (phone, video, or farm visit) with experts in crop production, soil health, and pest management.';
-    if (lo.includes('fertilizer') || lo.includes('soil')) return 'Get a **Soil Health Card** for free soil testing and fertilizer recommendations. Apply organic compost along with NPK fertilizers. The recommended ratio for most crops is 4:2:1.';
-    return "I'm your **Krishi Sakhi** farming companion! I can help with weather, crops, diseases, market prices, government schemes, and officer consultations. Ask me anything specific, or explore the app sections from the sidebar! 🌾";
+    if (lo.includes("fertilizer") || lo.includes("npk"))
+      return `For your recommended crop **${recommendedCrop || "crop"}**, apply NPK as per soil test results. Visit the Smart Recommendations page for detailed soil analysis.`;
+    if (lo.includes("scheme") || lo.includes("government"))
+      return "Explore **PM-KISAN**, **PMFBY**, and **Kisan Credit Card** in the Schemes section.";
+    if (lo.includes("price") || lo.includes("market"))
+      return "Check live prices in the **Market** section for your nearest mandi.";
+    if (lo.includes("disease") || lo.includes("pest"))
+      return "Upload a photo on the **Detect** page for AI-powered disease detection.";
+    return "I'm your **Krishi Sakhi** assistant! Ask me about fertilizers, crop care, schemes, or market prices. 🌾";
   };
 
+  // ── Render ──
   return (
-    <div className="flex bg-gray-50 h-screen overflow-hidden">
+    <div className="flex h-screen bg-gray-50 overflow-hidden">
       <Sidebar />
-      <main className="flex-1 md:ml-64 flex flex-col h-full relative">
 
-        {/* ═══ Premium Header ═══ */}
-        <header className="bg-gradient-to-r from-emerald-600 via-teal-600 to-cyan-600 px-6 py-3.5 flex justify-between items-center z-10 shadow-lg shadow-emerald-600/10 relative overflow-hidden">
-          <div className="absolute inset-0 bg-[url('data:image/svg+xml,%3Csvg%20width%3D%2220%22%20height%3D%2220%22%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%3E%3Ccircle%20cx%3D%222%22%20cy%3D%222%22%20r%3D%221%22%20fill%3D%22white%22%20opacity%3D%220.08%22%2F%3E%3C%2Fsvg%3E')]"></div>
-          <div className="relative z-10 flex items-center gap-3">
-            <div className="w-10 h-10 bg-white/15 backdrop-blur-sm rounded-xl flex items-center justify-center text-xl border border-white/20 shadow-inner">
-              🌾
+      <div className="flex flex-col flex-1 h-screen min-w-0 ml-0 md:ml-64">
+
+        {/* ── Header ── */}
+        <div className="shrink-0 flex items-center justify-between px-4 py-3 bg-white border-b border-gray-100 shadow-sm">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-full bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center text-white font-bold text-sm">
+              KS
             </div>
             <div>
-              <h1 className="text-lg font-extrabold text-white tracking-tight flex items-center gap-2">
-                Krishi Sakhi AI
-              </h1>
-              <p className="text-emerald-100 text-xs">
-                {farmerContext?.farmer
-                  ? `Connected to your farm data • ${farmerContext?.farms?.length || 0} farms`
-                  : 'Your AI-powered farming assistant'}
+              <p className="font-semibold text-gray-800 text-sm">Krishi Sakhi</p>
+              <p className="text-xs text-emerald-500 flex items-center gap-1">
+                <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full inline-block" />
+                AI Farming Assistant
               </p>
             </div>
           </div>
+          {recommendedCrop && (
+            <div className="hidden sm:flex items-center gap-2 bg-emerald-50 border border-emerald-200 rounded-full px-3 py-1">
+              <span className="text-xs text-emerald-600 font-medium">🌱 Crop:</span>
+              <span className="text-xs font-bold text-emerald-700 capitalize">{recommendedCrop}</span>
+            </div>
+          )}
+        </div>
 
-          <div className="relative z-10 flex items-center gap-2">
-            {/* Context indicator */}
-            {contextBadges && (
-              <button onClick={() => setShowContextPanel(!showContextPanel)}
-                className="hidden md:flex items-center gap-1.5 px-3 py-1.5 bg-white/10 backdrop-blur-sm rounded-lg border border-white/20 hover:bg-white/20 transition-colors cursor-pointer">
-                {contextBadges.has_farms && <span title="Farms" className="text-xs">🌿</span>}
-                {contextBadges.has_activities && <span title="Activities" className="text-xs">📋</span>}
-                {contextBadges.has_schemes && <span title="Schemes" className="text-xs">🏛️</span>}
-                {contextBadges.has_officers && <span title="Officers" className="text-xs">👨‍💼</span>}
-                {contextBadges.has_recommendations && <span title="Recommendations" className="text-xs">💡</span>}
-                <span className="text-[10px] text-white/70 font-medium ml-1">Context</span>
-              </button>
-            )}
-
-            <button
-              onClick={() => changeLanguage(language === 'Malayalam' ? 'English' : 'Malayalam')}
-              className="px-3 py-1.5 rounded-lg text-xs font-bold transition-all bg-white/15 backdrop-blur-sm text-white border border-white/20 hover:bg-white/25">
-              🌐 {language}
-            </button>
-          </div>
-        </header>
-
-        {/* Context panel (expandable) */}
-        {showContextPanel && contextBadges && (
-          <div className="bg-gradient-to-r from-emerald-50 to-teal-50 px-6 py-3 border-b border-emerald-100 flex flex-wrap gap-3 text-xs" style={{ animation: 'slideDown 0.2s ease-out' }}>
-            <span className="font-bold text-emerald-800">📊 AI Context Active:</span>
-            {contextBadges.has_farms && <span className="px-2 py-0.5 bg-emerald-100 text-emerald-700 rounded-full font-medium">🌿 Farms</span>}
-            {contextBadges.has_activities && <span className="px-2 py-0.5 bg-blue-100 text-blue-700 rounded-full font-medium">📋 Activities</span>}
-            {contextBadges.has_schemes && <span className="px-2 py-0.5 bg-amber-100 text-amber-700 rounded-full font-medium">🏛️ Schemes</span>}
-            {contextBadges.has_officers && <span className="px-2 py-0.5 bg-purple-100 text-purple-700 rounded-full font-medium">👨‍💼 Officers</span>}
-            {contextBadges.has_recommendations && <span className="px-2 py-0.5 bg-rose-100 text-rose-700 rounded-full font-medium">💡 Recommendations</span>}
-          </div>
+        {/* ── Crop banner (mobile) ── */}
+        {recommendedCrop && (
+          <CropBanner crop={recommendedCrop} />
         )}
 
-        {/* ═══ Messages Area ═══ */}
-        <div className="flex-1 overflow-y-auto p-4 md:p-6 space-y-4" style={{ background: 'linear-gradient(180deg, #f0fdf4 0%, #f8fafc 40%, #f1f5f9 100%)' }}>
-          {messages.map((message) => (
-            <div key={message.id}
-              className={`flex w-full ${message.sender === 'user' ? 'justify-end' : 'justify-start'}`}
-              style={{ animation: 'slideUp 0.3s ease-out' }}>
-
+        {/* ── Messages area ── */}
+        <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
+          {messages.map((msg) => (
+            <div
+              key={msg.id}
+              className={`flex ${msg.sender === "user" ? "justify-end" : "justify-start"}`}
+            >
               {/* Bot avatar */}
-              {message.sender === 'bot' && (
-                <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-500 flex items-center justify-center text-sm text-white shadow-md mr-2 flex-shrink-0 mt-1">
-                  🌾
+              {msg.sender === "bot" && (
+                <div className="w-7 h-7 rounded-full bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center text-white text-xs font-bold shrink-0 mr-2 mt-1">
+                  KS
                 </div>
               )}
 
-              <div className={`max-w-[85%] md:max-w-[70%] rounded-2xl relative group ${message.sender === 'user'
-                ? 'bg-gradient-to-br from-emerald-600 to-teal-600 text-white rounded-br-sm p-4 shadow-lg shadow-emerald-600/10'
-                : 'bg-white text-gray-800 border border-gray-100/80 rounded-bl-sm p-5 shadow-sm hover:shadow-md transition-shadow'
-                }`}>
-
-                {/* Message content */}
-                <div className={`text-sm md:text-[15px] leading-relaxed ${message.sender === 'bot' ? 'prose-sm' : ''}`}>
-                  {message.sender === 'bot' ? renderMessageContent(message.text) : message.text}
+              <div className={`flex flex-col gap-2 max-w-[78%]`}>
+                {/* Message bubble */}
+                <div
+                  className={`rounded-2xl px-4 py-3 text-sm shadow-sm leading-relaxed
+                    ${msg.sender === "user"
+                      ? "bg-emerald-600 text-white rounded-br-sm"
+                      : "bg-white text-gray-800 border border-gray-100 rounded-bl-sm"
+                    }`}
+                >
+                  {renderMessageContent(msg.text)}
                 </div>
 
-                {/* Timestamp + actions */}
-                <div className={`flex items-center gap-2 mt-2 ${message.sender === 'user' ? 'justify-end' : 'justify-between'}`}>
-                  <span className={`text-[10px] ${message.sender === 'user' ? 'text-emerald-200' : 'text-gray-400'}`}>
-                    {message.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                  </span>
+                {/* ── Info cards ── */}
+                {msg.cards && msg.cards.length > 0 && (
+                  <div className="space-y-2">
+                    {msg.cards.map((card, ci) => (
+                      <InfoCard key={ci} card={card} />
+                    ))}
+                  </div>
+                )}
 
-                  {message.sender === 'bot' && message.type !== 'welcome' && (
-                    <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                      <button onClick={() => speakMessage(message.text)}
-                        className="p-1.5 rounded-lg hover:bg-emerald-50 text-gray-400 hover:text-emerald-600 transition-colors" title="Listen">
-                        🔊
-                      </button>
-                      <button onClick={() => navigator.clipboard?.writeText(message.text.replace(/\*\*/g, ''))}
-                        className="p-1.5 rounded-lg hover:bg-emerald-50 text-gray-400 hover:text-emerald-600 transition-colors" title="Copy">
-                        📋
-                      </button>
-                    </div>
-                  )}
-                </div>
+                {/* Timestamp */}
+                <p className={`text-[10px] text-gray-400 ${msg.sender === "user" ? "text-right" : "text-left"}`}>
+                  {new Date(msg.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                </p>
               </div>
 
               {/* User avatar */}
-              {message.sender === 'user' && (
-                <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-500 flex items-center justify-center text-sm text-white shadow-md ml-2 flex-shrink-0 mt-1">
-                  👤
+              {msg.sender === "user" && (
+                <div className="w-7 h-7 rounded-full bg-gray-200 flex items-center justify-center text-gray-600 text-xs font-bold shrink-0 ml-2 mt-1">
+                  {session.name?.[0]?.toUpperCase() || "F"}
                 </div>
               )}
             </div>
           ))}
 
-          {/* Typing indicator */}
+          {/* Loading dots */}
           {isLoading && (
-            <div className="flex justify-start" style={{ animation: 'slideUp 0.2s ease-out' }}>
-              <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-500 flex items-center justify-center text-sm text-white shadow-md mr-2 flex-shrink-0">
-                🌾
+            <div className="flex justify-start items-end gap-2">
+              <div className="w-7 h-7 rounded-full bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center text-white text-xs font-bold shrink-0">
+                KS
               </div>
-              <div className="bg-white rounded-2xl rounded-bl-sm p-4 shadow-sm border border-gray-100 flex items-center gap-3">
-                <div className="flex gap-1">
-                  <div className="w-2.5 h-2.5 bg-emerald-500 rounded-full animate-bounce" style={{ animationDelay: '0s' }}></div>
-                  <div className="w-2.5 h-2.5 bg-emerald-500 rounded-full animate-bounce" style={{ animationDelay: '0.15s' }}></div>
-                  <div className="w-2.5 h-2.5 bg-emerald-500 rounded-full animate-bounce" style={{ animationDelay: '0.3s' }}></div>
+              <div className="bg-white border border-gray-100 rounded-2xl rounded-bl-sm px-4 py-3 shadow-sm">
+                <div className="flex gap-1 items-center h-4">
+                  <span className="w-2 h-2 bg-emerald-400 rounded-full animate-bounce [animation-delay:0ms]" />
+                  <span className="w-2 h-2 bg-emerald-400 rounded-full animate-bounce [animation-delay:150ms]" />
+                  <span className="w-2 h-2 bg-emerald-400 rounded-full animate-bounce [animation-delay:300ms]" />
                 </div>
-                <span className="text-xs text-gray-400 font-medium">Analyzing your farm data...</span>
               </div>
             </div>
           )}
+
           <div ref={messagesEndRef} />
         </div>
 
-        {/* ═══ Input Area ═══ */}
-        <div className="bg-white/90 backdrop-blur-xl border-t border-gray-200 p-3 md:p-4">
-          {/* Dynamic suggestions */}
-          <div className="flex gap-2 overflow-x-auto pb-3 scrollbar-hide">
-            {(suggestions.length > 0 ? suggestions.slice(0, 6) : [
-              'What schemes can I apply for?',
-              'How to improve my yield?',
-              'Best crops for this season?',
-              'Contact an officer near me'
-            ]).map((s, i) => (
-              <button key={i}
+        {/* ── Suggestions ── */}
+        {suggestions.length > 0 && messages.length <= 2 && (
+          <div className="shrink-0 px-4 py-2 flex gap-2 overflow-x-auto scrollbar-hide bg-white border-t border-gray-100">
+            {suggestions.map((s, i) => (
+              <button
+                key={i}
                 onClick={() => sendMessage(s)}
-                className="whitespace-nowrap px-4 py-2 bg-gradient-to-r from-emerald-50 to-teal-50 text-emerald-700 text-xs font-bold rounded-xl hover:from-emerald-100 hover:to-teal-100 border border-emerald-100 transition-all hover:-translate-y-0.5 shadow-sm">
+                className="shrink-0 text-xs bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-full px-3 py-1.5 hover:bg-emerald-100 transition whitespace-nowrap"
+              >
                 {s}
               </button>
             ))}
           </div>
+        )}
 
-          <div className="max-w-4xl mx-auto flex items-end gap-2">
-            <div className="flex-1 relative bg-gray-50 rounded-2xl border border-gray-200 focus-within:border-emerald-500 focus-within:ring-2 focus-within:ring-emerald-500/20 focus-within:bg-white transition-all">
-              <textarea ref={textareaRef}
-                value={inputMessage}
-                onChange={handleInput}
-                onKeyPress={handleKeyPress}
-                placeholder={translate('Ask about crops, weather, schemes, prices...')}
-                rows={1}
-                disabled={isLoading}
-                className="w-full pl-4 pr-12 py-3.5 bg-transparent rounded-2xl focus:outline-none font-medium text-gray-800 placeholder-gray-400 resize-none text-sm"
-                style={{ minHeight: '48px', maxHeight: '120px' }} />
+        {/* ── Input bar ── */}
+        <div className="shrink-0 bg-white border-t border-gray-100 px-4 py-3">
+          <div className="flex items-end gap-2 bg-gray-50 border border-gray-200 rounded-2xl px-3 py-2 focus-within:border-emerald-400 focus-within:ring-2 focus-within:ring-emerald-100 transition">
+            <textarea
+              ref={textareaRef}
+              rows={1}
+              value={inputMessage}
+              onChange={handleInput}
+              onKeyDown={handleKeyPress}
+              placeholder={recommendedCrop ? `Ask about ${recommendedCrop} or anything farming…` : "Ask anything about farming…"}
+              className="flex-1 resize-none bg-transparent text-sm text-gray-800 placeholder-gray-400 focus:outline-none max-h-32"
+            />
 
-              <button
-                onClick={isListening ? stopListening : startListening}
-                className={`absolute right-3 bottom-2.5 p-2 rounded-xl transition-all ${isListening
-                  ? 'bg-red-100 text-red-600 animate-pulse shadow-lg shadow-red-200'
-                  : 'text-gray-400 hover:text-emerald-600 hover:bg-emerald-50'}`}
-                title={isListening ? 'Stop listening' : 'Voice input'}>
-                {isListening ? (
-                  <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="12" r="6" /></svg>
-                ) : (
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M19 11a7 7 0 01-14 0M12 19v3m-3 0h6M12 1a3 3 0 00-3 3v7a3 3 0 006 0V4a3 3 0 00-3-3z" /></svg>
-                )}
-              </button>
-            </div>
+            {/* Voice button */}
+            <button
+              onClick={isListening ? stopListening : startListening}
+              className={`p-2 rounded-xl transition shrink-0 ${
+                isListening ? "bg-red-100 text-red-500 animate-pulse" : "text-gray-400 hover:text-emerald-600 hover:bg-emerald-50"
+              }`}
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                <rect x="9" y="2" width="6" height="13" rx="3" />
+                <path d="M5 10a7 7 0 0 0 14 0" />
+                <line x1="12" y1="19" x2="12" y2="22" />
+                <line x1="8" y1="22" x2="16" y2="22" />
+              </svg>
+            </button>
 
+            {/* Send button */}
             <button
               onClick={() => sendMessage()}
               disabled={!inputMessage.trim() || isLoading}
-              className="p-3.5 bg-gradient-to-r from-emerald-600 to-teal-600 text-white rounded-2xl hover:from-emerald-500 hover:to-teal-500 disabled:from-gray-300 disabled:to-gray-300 disabled:cursor-not-allowed shadow-lg shadow-emerald-500/20 transition-all transform hover:scale-105 active:scale-95 flex-shrink-0">
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M6 12L3.269 3.126A59.768 59.768 0 0121.485 12 59.77 59.77 0 013.27 20.876L5.999 12zm0 0h7.5" /></svg>
+              className="p-2 rounded-xl bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-40 disabled:cursor-not-allowed transition shrink-0"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                <line x1="22" y1="2" x2="11" y2="13" />
+                <polygon points="22 2 15 22 11 13 2 9 22 2" />
+              </svg>
             </button>
           </div>
 
-          <p className="text-center text-[10px] text-gray-400 mt-2 font-medium">
-            Uses your farm data for personalized advice
-          </p>
+          {/* Active crop context indicator */}
+          {recommendedCrop && (
+            <p className="text-[10px] text-center text-gray-400 mt-1.5">
+              🌱 Context: <span className="font-medium text-emerald-600 capitalize">{recommendedCrop}</span> recommendation active
+            </p>
+          )}
         </div>
-      </main>
-
-      <style>{`
-        @keyframes slideUp { from { opacity: 0; transform: translateY(15px); } to { opacity: 1; transform: translateY(0); } }
-        @keyframes slideDown { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
-        .scrollbar-hide::-webkit-scrollbar { display: none; }
-        .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
-      `}</style>
+      </div>
     </div>
   );
 }

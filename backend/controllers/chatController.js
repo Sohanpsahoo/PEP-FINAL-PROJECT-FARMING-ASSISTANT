@@ -1,360 +1,300 @@
-const Farm = require('../models/Farm');
-const Activity = require('../models/Activity');
-const Recommendation = require('../models/Recommendation');
-const Scheme = require('../models/Scheme');
-const Officer = require('../models/Officer');
-const Farmer = require('../models/Farmer');
+const { GoogleGenerativeAI } = require("@google/generative-ai");
+const Farmer = require("../models/Farmer");
+const Recommendation = require("../models/Recommendation");
 
-// ─── Fetch all cross-section context for a farmer ───────────────────
-async function gatherFarmerContext(farmerId) {
-  const ctx = {};
-  try {
-    // Farmer profile
-    const farmer = await Farmer.findById(farmerId).lean();
-    if (farmer) {
-      ctx.farmer = {
-        name: farmer.name,
-        phone: farmer.phone,
-        state: farmer.state,
-        district: farmer.district,
-        experience_years: farmer.experience_years,
-        preferred_language: farmer.preferred_language
-      };
-    }
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
-    // Farms
-    const farms = await Farm.find({ farmer: farmerId }).lean();
-    ctx.farms = farms.map(f => ({
-      name: f.name,
-      land_size_acres: f.land_size_acres,
-      soil_type: f.soil_type,
-      irrigation_type: f.irrigation_type,
-      primary_crops: f.primary_crops,
-      state: f.state,
-      district: f.district
-    }));
+// ── Model fallback chain — only models confirmed working ──
+const MODEL_CHAIN = [
+  "gemini-2.0-flash",           // free tier: 1500/day — primary
+  "gemini-2.0-flash-lite",      // free tier: 1500/day — lighter
+  "gemini-2.5-flash",           // free tier: 20/day   — last resort
+];
 
-    // Recent activities (last 15)
-    const activities = await Activity.find({ farmer: farmerId })
-      .sort({ date: -1 }).limit(15).lean();
-    ctx.activities = activities.map(a => ({
-      type: a.activity_type,
-      note: a.note || a.text_note,
-      date: a.date,
-      amount: a.amount
-    }));
-
-    // Saved recommendations (up to 10)
-    const recs = await Recommendation.find({ farmer: farmerId })
-      .sort({ createdAt: -1 }).limit(10).lean();
-    ctx.recommendations = recs.map(r => ({
-      category: r.category,
-      title: r.title,
-      description: r.description,
-      impact: r.impact
-    }));
-
-    // Available schemes for the farmer's state
-    const state = farmer?.state;
-    if (state) {
-      const schemes = await Scheme.find({
-        $or: [{ state }, { state: 'All India', category: 'national' }]
-      }).limit(10).lean();
-      ctx.schemes = schemes.map(s => ({
-        name: s.name,
-        category: s.category,
-        description: s.description,
-        highlights: s.highlights?.slice(0, 3),
-        official_url: s.official_url
-      }));
-    }
-
-    // Officers in the farmer's area
-    if (state) {
-      const officers = await Officer.find({ state }).limit(5).lean();
-      ctx.officers = officers.map(o => ({
-        name: o.name,
-        designation: o.designation,
-        specialization: o.specialization,
-        phone: o.phone,
-        district: o.district
-      }));
-    }
-  } catch (err) {
-    console.error('Context gather error:', err.message);
-  }
-  return ctx;
-}
-
-// ─── Build the Gemini prompt with full context ──────────────────────
-function buildPrompt(userMessage, context, language, conversationHistory) {
-  const farmerInfo = context.farmer
-    ? `FARMER PROFILE:
-- Name: ${context.farmer.name}
-- State: ${context.farmer.state}, District: ${context.farmer.district}
-- Experience: ${context.farmer.experience_years} years
-- Language Preference: ${context.farmer.preferred_language}`
-    : '';
-
-  const farmInfo = context.farms?.length
-    ? `\nFARMS (${context.farms.length}):\n${context.farms.map(f =>
-      `- ${f.name}: ${f.land_size_acres} acres, Soil: ${f.soil_type || 'N/A'}, Irrigation: ${f.irrigation_type || 'N/A'}, Crops: ${f.primary_crops || 'N/A'}`
-    ).join('\n')}`
-    : '';
-
-  const activityInfo = context.activities?.length
-    ? `\nRECENT FARMING ACTIVITIES:\n${context.activities.slice(0, 8).map(a =>
-      `- [${a.type}] ${a.note || ''} (${a.date ? new Date(a.date).toLocaleDateString('en-IN') : ''})`
-    ).join('\n')}`
-    : '';
-
-  const recInfo = context.recommendations?.length
-    ? `\nAI RECOMMENDATIONS ALREADY PROVIDED:\n${context.recommendations.slice(0, 5).map(r =>
-      `- [${r.category}] ${r.title}: ${r.description?.substring(0, 100)}`
-    ).join('\n')}`
-    : '';
-
-  const schemeInfo = context.schemes?.length
-    ? `\nAVAILABLE GOVERNMENT SCHEMES:\n${context.schemes.slice(0, 6).map(s =>
-      `- ${s.name} (${s.category}): ${s.description?.substring(0, 80)}... URL: ${s.official_url}`
-    ).join('\n')}`
-    : '';
-
-  const officerInfo = context.officers?.length
-    ? `\nLOCAL AGRICULTURAL OFFICERS:\n${context.officers.slice(0, 3).map(o =>
-      `- ${o.name}, ${o.designation}, ${o.specialization}, Contact: ${o.phone}`
-    ).join('\n')}`
-    : '';
-
-  const recentConvo = conversationHistory?.length
-    ? `\nRECENT CONVERSATION:\n${conversationHistory.slice(-6).map(m =>
-      `${m.role === 'user' ? 'Farmer' : 'Krishi Sakhi'}: ${m.text?.substring(0, 150)}`
-    ).join('\n')}`
-    : '';
-
-  return `You are **Krishi Sakhi** (कृषि सखी), an expert AI agricultural advisor for Indian farmers. You have deep knowledge of Indian agriculture, crops, soil science, weather patterns, pest management, government schemes, market prices, and best farming practices.
-
-RESPOND IN: ${language || 'English'}
-
-═══ FARMER'S COMPLETE DATA FROM THE APP ═══
-${farmerInfo}
-${farmInfo}
-${activityInfo}
-${recInfo}
-${schemeInfo}
-${officerInfo}
-${recentConvo}
-═══ END OF CONTEXT ═══
-
-INSTRUCTIONS:
-1. Use the farmer's actual data above to give PERSONALIZED answers
-2. Reference their specific farms, crops, location, and activities when relevant
-3. If asked about schemes, provide scheme names, key benefits, AND official URLs from the data above
-4. If asked about officers, share their name, designation, and contact details
-5. Include practical, actionable advice with specific numbers (quantities, timing, costs)
-6. If asked about weather, provide seasonal advice based on their state and current month
-7. For market/price questions, give crop-specific advice for their region
-8. Structure longer answers with bullet points or numbered steps for clarity
-9. If you don't have enough information, suggest which section of the app they can use (Weather, Market, Detect, Officers, Schemes)
-10. Be warm, supportive, and encouraging — farmers are your partners
-11. For crop disease questions, describe symptoms and suggest both organic and chemical remedies
-12. Always mention relevant government schemes when giving advice about finances or subsidies
-
-FARMER'S QUESTION: "${userMessage}"
-
-Provide a detailed, helpful, and actionable response:`;
-}
-
-// ─── Smart Fallback Logic (When Gemini Fails) ──────────────────────
-function getSmartFallback(userMessage, context, language) {
-  const lo = userMessage.toLowerCase();
-  const lang = (language || 'English').toLowerCase();
-  const isMal = lang.includes('malayalam');
-
-  // Personalized context strings
-  const farmCount = context.farms?.length || 0;
-  const cropsList = context.farms?.flatMap(f => 
-    typeof f.primary_crops === 'string' 
-      ? f.primary_crops.split(',').map(c => c.trim()).filter(Boolean)
-      : (Array.isArray(f.primary_crops) ? f.primary_crops : [])
-  ) || [];
-  const uniqueCrops = [...new Set(cropsList)];
-  const schemes = context.schemes?.map(s => s.name).slice(0, 3) || [];
-  const officers = context.officers?.map(o => o.name).slice(0, 2) || [];
-
-  let response = "";
-
-  // 1. Context-Aware Welcome/Generic
-  if (farmCount > 0) {
-    response += isMal 
-      ? `നിങ്ങളുടെ **${farmCount}** ഫാമുകളെക്കുറിച്ചുള്ള വിവരങ്ങൾ എന്റെ പക്കലുണ്ട്. `
-      : `I have information about your **${farmCount}** farms. `;
-  }
-
-  // 2. Keyword Matching
-  if (lo.includes('scheme') || lo.includes('pm-kisan') || lo.includes('government') || lo.includes('വില') || lo.includes('പദ്ധതി')) {
-    response += isMal
-      ? `നിങ്ങൾക്ക് പ്രയോജനപ്പെടുത്താവുന്ന പ്രധാന പദ്ധതികൾ: **${schemes.join(', ') || 'PM-KISAN, PMFBY'}**. കൂടുതൽ വിവരങ്ങൾക്ക് **Schemes** പേജ് സന്ദർശിക്കുക.`
-      : `Based on your profile, you can benefit from: **${schemes.join(', ') || 'PM-KISAN, PMFBY, KCC'}**. Check the **Schemes** section for official links.`;
-  } 
-  else if (lo.includes('price') || lo.includes('market') || lo.includes('വില') || lo.includes('വിപണി')) {
-    response += isMal
-      ? `വിപണി വിലകൾക്കും ട്രെൻഡുകൾക്കുമായി **Market** സെക്ഷൻ പരിശോധിക്കുക. നിങ്ങളുടെ ജില്ലയിലെ മണ്ടികളിലെ വിലകൾ അവിടെ ലഭ്യമാണ്.`
-      : `You can check live prices and mandi trends in the **Market** section. It shows real-time data for your district.`;
-  }
-  else if (lo.includes('officer') || lo.includes('consult') || lo.includes('ഉദ്യോഗസ്ഥൻ')) {
-    response += isMal
-      ? `നിങ്ങളുടെ ഭാഗത്തുള്ള കൃഷി ഓഫീസർമാർ: **${officers.join(', ') || 'കൃഷി ഭവൻ ഉദ്യോഗസ്ഥർ'}**. **Officers** പേജിൽ ഇവരുമായി കൂടിക്കാഴ്ച ബുക്ക് ചെയ്യാം.`
-      : `Agricultural officers near you include **${officers.join(', ') || 'local KVK experts'}**. You can book a consultation in the **Officers** section.`;
-  }
-  else if (lo.includes('weather') || lo.includes('rain') || lo.includes('മഴ')) {
-    response += isMal
-      ? `കാലാവസ്ഥാ പ്രവചനത്തിനായി **Weather** പേജ് സന്ദർശിക്കുക. അടുത്ത 5 ദിവസത്തെ വിവരങ്ങൾ അവിടെ ലഭ്യമാണ്.`
-      : `For detailed 5-day forecasts, please visit the **Weather** section. It's best to check this before spraying or harvesting.`;
-  }
-  else if (uniqueCrops.some(c => lo.includes(c.toLowerCase()))) {
-    const matchedCrop = uniqueCrops.find(c => lo.includes(c.toLowerCase()));
-    response += isMal
-      ? `നിങ്ങളുടെ **${matchedCrop}** കൃഷിയെക്കുറിച്ച് ചോദിച്ചതിന് നന്ദി. നല്ല വിളവിനായി ജൈവ വളങ്ങൾ ഉപയോഗിക്കുക. കൂടുതൽ സഹായത്തിന് **Detect** പേജ് ഉപയോഗിക്കാം.`
-      : `Since you asked about **${matchedCrop}**, I recommend using organic mulch and ensuring proper drainage. You can also use the **Detect** page for health checks.`;
-  }
-  else {
-    response += isMal
-      ? `ഞാൻ നിങ്ങളുടെ **കൃഷി സഖി** ആണ്. ഫാമുകൾ, കൃഷി വിദ്യകൾ, സർക്കാർ പദ്ധതികൾ എന്നിവയെക്കുറിച്ച് എനിക്ക് നിങ്ങളെ സഹായിക്കാനാകും.`
-      : `I'm your **Krishi Sakhi** farming guide. I can help with crops, weather, schemes, and expert consultations. Using your specific farm data, I'll provide the best advice!`;
-  }
-
-  // Append a helpful footer
-  response += isMal
-    ? `\n\n*(ശ്രദ്ധിക്കുക: നിലവിൽ ഞാൻ ഒരു ലളിതമായ മറുപടിയാണ് നൽകുന്നത്, കൂടുതൽ വിവരങ്ങൾക്ക് ബന്ധപ്പെട്ട സെക്ഷനുകൾ നോക്കുക)*`
-    : `\n\n*(Note: I'm currently providing a smart-fallback response. For real-time analysis, check the specific app sections!)*`;
-
-  return response;
-}
-
-// ─── POST /api/chatbot/gemini ───────────────────────────────────────
-exports.chat = async (req, res) => {
-  const { message, language, farmer_id, conversation_history } = req.body;
-  if (!message) return res.status(400).json({ success: false, message: 'Message is required' });
-
-  // Gather full cross-section context
-  let context = {};
-  if (farmer_id) context = await gatherFarmerContext(farmer_id);
-
-  const apiKey = (process.env.GEMINI_API_KEY || '').trim();
-  if (!apiKey) {
-      return res.status(500).json({ success: false, message: 'Gemini API key not configured' });
-  }
-
-  const { GoogleGenerativeAI } = require('@google/generative-ai');
-  const genAI = new GoogleGenerativeAI(apiKey);
-  const prompt = buildPrompt(message, context, language || 'English', conversation_history);
-
-  // Models to try in order
-  const modelsToTry = [
-    'gemini-2.5-flash',
-    'gemini-2.5-pro',
-    'gemini-2.0-flash'
-  ];
-
+async function callGeminiWithFallback(systemText, history, message) {
   let lastError = null;
-  let reply = null;
-  let successfulModel = null;
 
-  for (const modelName of modelsToTry) {
+  for (const modelName of MODEL_CHAIN) {
     try {
-      console.log(`Attempting Gemini chat with model: ${modelName}...`);
-      const model = genAI.getGenerativeModel({ model: modelName });
-      
-      const result = await model.generateContent({
-        contents: [{ role: 'user', parts: [{ text: prompt }] }],
-        generationConfig: { maxOutputTokens: 1000, temperature: 0.7 }
+      console.log(`🤖 Trying model: ${modelName}`);
+
+      const geminiModel = genAI.getGenerativeModel({
+        model: modelName,
+        systemInstruction: {
+          role: "user",
+          parts: [{ text: systemText }],
+        },
       });
-      
-      const response = await result.response;
-      reply = response.text();
-      
-      if (reply) {
-        successfulModel = modelName;
-        console.log(`✅ Success with model: ${modelName}`);
-        break; 
-      }
+
+      const chat = geminiModel.startChat({ history });
+      const result = await chat.sendMessage(message);
+      const text = result.response.text();
+
+      if (!text) throw new Error("Empty response");
+
+      console.log(`✅ Success with model: ${modelName}`);
+      return { text, modelUsed: modelName };
     } catch (err) {
-      console.error(`❌ Model ${modelName} failed:`, err.message);
-      lastError = err.message;
+      const msg = err.message || "";
+
+      // Retry on ANY of these — quota, not found, deprecated, rate limit
+      const shouldTryNext =
+        msg.includes("quota")             ||
+        msg.includes("429")               ||
+        msg.includes("RESOURCE_EXHAUSTED")||
+        msg.includes("404")               ||
+        msg.includes("not found")         ||
+        msg.includes("not supported")     ||
+        msg.includes("deprecated")        ||
+        msg.includes("rate limit");
+
+      console.warn(`⚠️  Model ${modelName} failed: ${msg.slice(0, 120)}`);
+      lastError = err;
+
+      if (!shouldTryNext) {
+        // Auth / bad request — no point trying others
+        throw err;
+      }
     }
   }
 
-  if (reply) {
-    return res.json({
+  throw lastError || new Error("All Gemini models exhausted");
+}
+
+// ---------------------------------------------------------------------------
+// POST /api/chatbot/gemini
+// ---------------------------------------------------------------------------
+exports.geminiChat = async (req, res, next) => {
+  try {
+    const { message, language, farmer_id, conversation_history } = req.body;
+
+    if (!message) {
+      return res.status(400).json({ success: false, message: "Message is required" });
+    }
+
+    let farmerInfo = "";
+    let cropContext = "";
+
+    if (farmer_id) {
+      try {
+        const farmer = await Farmer.findById(farmer_id).lean();
+        if (farmer) {
+          farmerInfo = `Farmer: ${farmer.name}, Location: ${farmer.village || ""}, ${farmer.district || ""}, ${farmer.state || "India"}`;
+        }
+
+        const latestRec = await Recommendation.findOne({ farmer: farmer_id })
+          .sort({ createdAt: -1 })
+          .lean();
+
+        console.log("📋 Latest recommendation raw:", JSON.stringify(latestRec, null, 2));
+
+        if (latestRec) {
+          const crop       = latestRec.recommendedCrop   || latestRec.recommended_crop || null;
+          const confidence = latestRec.confidence        ?? 0;
+          const altCrops   = latestRec.alternativeCrops  || latestRec.alternative_crops || [];
+          const soilN      = latestRec.soilData?.N       ?? "N/A";
+          const soilP      = latestRec.soilData?.P       ?? "N/A";
+          const soilK      = latestRec.soilData?.K       ?? "N/A";
+          const soilPh     = latestRec.soilData?.ph      ?? "N/A";
+          const temp       = latestRec.weather?.temperature ?? "N/A";
+          const humidity   = latestRec.weather?.humidity    ?? "N/A";
+          const rainfall   = latestRec.weather?.rainfall    ?? "N/A";
+          const location   = latestRec.weather?.location    || "Unknown";
+          const sowingTime = latestRec.bestSowingTime    || "N/A";
+          const yieldEst   = latestRec.estimatedYield    || "N/A";
+          const insights   = latestRec.soilInsights      || "N/A";
+          const tips       = (latestRec.growingTips      || []).join("; ") || "N/A";
+          const warnings   = (latestRec.warnings         || []).join("; ") || "None";
+
+          if (crop) {
+            cropContext = `
+LATEST SMART CROP RECOMMENDATION (ML + Gemini verified):
+- Recommended Crop : ${crop}
+- Confidence       : ${Math.round(confidence * 100)}%
+- Alternative Crops: ${altCrops.join(", ") || "None"}
+- Soil (N/P/K/pH)  : ${soilN} / ${soilP} / ${soilK} / ${soilPh}
+- Weather          : ${temp}°C, Humidity ${humidity}%, Rainfall ${rainfall}mm
+- Location         : ${location}
+- Best Sowing Time : ${sowingTime}
+- Expected Yield   : ${yieldEst}
+- Soil Insights    : ${insights}
+- Growing Tips     : ${tips}
+- Warnings         : ${warnings}`.trim();
+          }
+        }
+      } catch (e) {
+        console.error("❌ Context fetch error:", e.message);
+      }
+    }
+
+    const systemText = `You are Krishi Sakhi, an expert AI farming assistant for Indian farmers.
+${farmerInfo ? `\nFARMER PROFILE:\n${farmerInfo}` : ""}
+${cropContext ? `\n${cropContext}` : "\nNo crop recommendation available yet. Give general farming advice."}
+
+RESPONSE RULES:
+1. Always respond in ${language || "English"}.
+2. Use the crop recommendation data above for personalized advice.
+3. For fertilizer/crop/soil questions, end response with <cards> JSON:
+
+<cards>
+[
+  {
+    "type": "fertilizer",
+    "title": "Fertilizer Schedule",
+    "icon": "🧪",
+    "data": {
+      "nitrogen": "X kg/ha — Apply in 2 splits",
+      "phosphorous": "X kg/ha — Basal application",
+      "potassium": "X kg/ha — Basal application",
+      "organic": "5 tonnes/ha FYM before sowing"
+    }
+  },
+  {
+    "type": "schedule",
+    "title": "Crop Calendar",
+    "icon": "📅",
+    "data": {
+      "sowing": "Month range",
+      "fertilizing": "Days after sowing",
+      "irrigation": "Frequency",
+      "harvest": "Month range"
+    }
+  },
+  {
+    "type": "warning",
+    "title": "Soil Warnings",
+    "icon": "⚠️",
+    "items": ["warning 1", "warning 2"]
+  },
+  {
+    "type": "tip",
+    "title": "Pro Tips",
+    "icon": "💡",
+    "items": ["tip 1", "tip 2"]
+  },
+  {
+    "type": "market",
+    "title": "Market Info",
+    "icon": "📈",
+    "data": {
+      "avgPrice": "₹X–₹Y/quintal",
+      "bestMarket": "APMC Mandi, district",
+      "season": "Peak price month"
+    }
+  }
+]
+</cards>
+
+Only include relevant cards. Not every response needs cards.
+4. Be concise, friendly, and practical.`;
+
+    // ── Build valid Gemini history ──
+    const rawHistory = (conversation_history || []).slice(-10);
+    const validHistory = [];
+
+    for (const m of rawHistory) {
+      const role = m.role === "assistant" || m.sender === "bot" ? "model" : "user";
+      const text = (m.text || m.content || "").trim();
+      if (!text) continue;
+      validHistory.push({ role, parts: [{ text }] });
+    }
+
+    while (validHistory.length > 0 && validHistory[0].role === "model") {
+      validHistory.shift();
+    }
+
+    const cleanHistory = [];
+    for (const msg of validHistory) {
+      const last = cleanHistory[cleanHistory.length - 1];
+      if (last && last.role === msg.role) continue;
+      cleanHistory.push(msg);
+    }
+
+    const finalHistory = cleanHistory.filter(
+      (m) => m.parts[0].text !== message
+    );
+
+    console.log(`📜 History length: ${finalHistory.length}`);
+
+    // ── Call Gemini with fallback chain ──
+    const { text: fullText, modelUsed } = await callGeminiWithFallback(
+      systemText,
+      finalHistory,
+      message
+    );
+
+    // ── Parse <cards> ──
+    let reply = fullText;
+    let cards = null;
+
+    const cardsMatch = fullText.match(/<cards>([\s\S]*?)<\/cards>/i);
+    if (cardsMatch) {
+      try {
+        cards = JSON.parse(cardsMatch[1].trim());
+        reply = fullText.replace(/<cards>[\s\S]*?<\/cards>/i, "").trim();
+      } catch (e) {
+        console.error("❌ Cards parse error:", e.message);
+      }
+    }
+
+    return res.status(200).json({
       success: true,
       reply,
-      is_fallback: false,
-      model_used: successfulModel,
+      cards,
+      modelUsed,
       context_used: {
-        has_farms: (context.farms?.length || 0) > 0,
-        has_activities: (context.activities?.length || 0) > 0,
-        has_schemes: (context.schemes?.length || 0) > 0,
-        has_officers: (context.officers?.length || 0) > 0,
-        has_recommendations: (context.recommendations?.length || 0) > 0
-      }
+        hasCropRecommendation: !!cropContext,
+        recommendedCrop: cropContext
+          ? cropContext.match(/Recommended Crop\s*:\s*(.+)/)?.[1]?.trim()
+          : null,
+      },
     });
+  } catch (err) {
+    console.error("❌ Gemini chat error:", err.message);
+    next(err);
   }
-
-  // If ALL models failed, use the smart fallback
-  console.error('All Gemini models failed. Using Smart Fallback. Last error:', lastError);
-  const fallbackReply = getSmartFallback(message, context, language);
-  
-  res.json({
-    success: true,
-    reply: fallbackReply,
-    is_fallback: true,
-    error: lastError,
-    context_used: {
-      has_farms: (context.farms?.length || 0) > 0,
-      has_activities: (context.activities?.length || 0) > 0,
-      has_schemes: (context.schemes?.length || 0) > 0,
-      has_officers: (context.officers?.length || 0) > 0,
-      has_recommendations: (context.recommendations?.length || 0) > 0
-    }
-  });
 };
 
-// ─── GET /api/chatbot/suggestions ───────────────────────────────────
-exports.getSuggestions = async (req, res) => {
+// ---------------------------------------------------------------------------
+// GET /api/chatbot/suggestions
+// ---------------------------------------------------------------------------
+exports.getSuggestions = async (req, res, next) => {
   try {
     const { farmer_id } = req.query;
+
     let suggestions = [
-      'What are the best farming practices for this season?',
-      'Which government schemes can I benefit from?',
-      'How do I improve my soil health?',
-      'What is the current market price for my crops?',
-      'How to protect crops from pests organically?',
-      'What fertilizers should I use for rice cultivation?',
-      'How to get a Kisan Credit Card?',
-      'Tell me about PM-KISAN scheme benefits'
+      "What fertilizer should I use for my recommended crop?",
+      "Show me a crop calendar for this season",
+      "How do I improve my soil health?",
+      "What government schemes can I apply for?",
+      "What are the market prices for my crop?",
+      "How to protect crops from pests?",
     ];
 
     if (farmer_id) {
-      const farms = await Farm.find({ farmer: farmer_id }).lean();
-      if (farms.length > 0) {
-        const cropsList = farms.flatMap(f => 
-          typeof f.primary_crops === 'string' 
-            ? f.primary_crops.split(',').map(c => c.trim()).filter(Boolean)
-            : (Array.isArray(f.primary_crops) ? f.primary_crops : [])
-        );
-        if (cropsList.length > 0) {
-          suggestions.unshift(
-            `What's the best time to harvest ${cropsList[0]}?`,
-            `How to increase ${cropsList[0]} yield per acre?`,
-            `What are common diseases in ${cropsList[0]}?`
-          );
+      try {
+        const rec = await Recommendation.findOne({ farmer: farmer_id })
+          .sort({ createdAt: -1 })
+          .lean();
+
+        const crop = rec?.recommendedCrop || rec?.recommended_crop;
+        if (crop) {
+          suggestions = [
+            `Fertilizer schedule for ${crop}`,
+            `Best practices for growing ${crop}`,
+            `Market prices for ${crop}`,
+            `Pest control for ${crop}`,
+            "How to improve my soil health?",
+            "What government schemes can I apply for?",
+          ];
         }
+      } catch (e) {
+        console.error("❌ Suggestions fetch error:", e.message);
       }
     }
 
-    res.json({ success: true, data: suggestions.slice(0, 8) });
-  } catch (error) {
-    res.json({ success: true, data: ['How can I improve my farming?'] });
+    return res.status(200).json({ success: true, data: suggestions });
+  } catch (err) {
+    next(err);
   }
 };

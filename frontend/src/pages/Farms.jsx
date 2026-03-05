@@ -21,9 +21,14 @@ export default function Farms() {
   const [currentUser, setCurrentUser] = useState(null);
   const [success, setSuccess] = useState('');
   const [formData, setFormData] = useState({
-    name: '', latitude: '', longitude: '',
-    land_size_acres: '', soil_type: 'loamy',
-    irrigation_type: 'rain_fed', primary_crops: ''
+    name: '',
+    land_size_acres: '',
+    soil_type: 'loamy',
+    irrigation_type: 'rain_fed',
+    primary_crops: '',
+    nitrogen_value: '',
+    phosphorus_value: '',
+    potassium_value: ''
   });
 
   const SOIL_TYPES = [
@@ -99,9 +104,14 @@ export default function Farms() {
 
   const handleEdit = (farm) => {
     setFormData({
-      name: farm.name, latitude: farm.latitude || '', longitude: farm.longitude || '',
-      land_size_acres: farm.land_size_acres, soil_type: farm.soil_type,
-      irrigation_type: farm.irrigation_type, primary_crops: farm.primary_crops
+      name: farm.name,
+      land_size_acres: farm.land_size_acres,
+      soil_type: farm.soil_type,
+      irrigation_type: farm.irrigation_type,
+      primary_crops: farm.primary_crops,
+      nitrogen_value: farm.nitrogen_value || '',
+      phosphorus_value: farm.phosphorus_value || '',
+      potassium_value: farm.potassium_value || ''
     });
     setEditingFarm(farm);
     setShowAddForm(true);
@@ -120,9 +130,14 @@ export default function Farms() {
 
   const resetForm = () => {
     setFormData({
-      name: '', latitude: '', longitude: '',
-      land_size_acres: '', soil_type: 'loamy',
-      irrigation_type: 'rain_fed', primary_crops: ''
+      name: '',
+      land_size_acres: '',
+      soil_type: 'loamy',
+      irrigation_type: 'rain_fed',
+      primary_crops: '',
+      nitrogen_value: '',
+      phosphorus_value: '',
+      potassium_value: ''
     });
   };
 
@@ -250,6 +265,38 @@ export default function Farms() {
                         placeholder="e.g., Rice, Coconut, Pepper" required
                         className="w-full px-4 py-3 rounded-xl bg-gray-50 border border-gray-200 focus:outline-none focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10 focus:bg-white transition-all"
                       />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-bold text-gray-700 mb-2">🧪 Soil Nutrients (NPK)</label>
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                        <input
+                          type="number"
+                          step="any"
+                          min="0"
+                          value={formData.nitrogen_value}
+                          onChange={(e) => setFormData({ ...formData, nitrogen_value: e.target.value })}
+                          placeholder="Nitrogen (N)"
+                          className="w-full px-4 py-3 rounded-xl bg-gray-50 border border-gray-200 focus:outline-none focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10 focus:bg-white transition-all"
+                        />
+                        <input
+                          type="number"
+                          step="any"
+                          min="0"
+                          value={formData.phosphorus_value}
+                          onChange={(e) => setFormData({ ...formData, phosphorus_value: e.target.value })}
+                          placeholder="Phosphorus (P)"
+                          className="w-full px-4 py-3 rounded-xl bg-gray-50 border border-gray-200 focus:outline-none focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10 focus:bg-white transition-all"
+                        />
+                        <input
+                          type="number"
+                          step="any"
+                          min="0"
+                          value={formData.potassium_value}
+                          onChange={(e) => setFormData({ ...formData, potassium_value: e.target.value })}
+                          placeholder="Potassium (K)"
+                          className="w-full px-4 py-3 rounded-xl bg-gray-50 border border-gray-200 focus:outline-none focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10 focus:bg-white transition-all"
+                        />
+                      </div>
                     </div>
                     <div>
                       <label className="block text-sm font-bold text-gray-700 mb-2">🌐 Latitude</label>
